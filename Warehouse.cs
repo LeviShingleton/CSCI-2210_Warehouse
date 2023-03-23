@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -12,6 +13,19 @@ namespace AS_Warehouse
 
         const int MAX_DOCKS = 15;
         const int TIME_INCREMENTS = 48;
+
+        private static readonly string csvOutputDirectory = @"..\..\..\CSV Output\";
+        private static string _csvFileName = "Warehouse";
+        public static string csvFileName
+        {
+            get { return _csvFileName; }
+            private set { _csvFileName = value; }
+        }
+
+        public static string CsvOutputFile
+        {
+            get; private set;
+        }
 
         public static int CurrentTime
         {
@@ -60,9 +74,14 @@ namespace AS_Warehouse
 
         static Warehouse()
         {
-            InitDockList();
+            Init();
         }
 
+        private static void Init()
+        {
+            InitDockList();
+            InitCsvOutput();
+        }
         private static void InitDockList()
         {
             for (int i = 0; i < random.Next(1, MAX_DOCKS + 1); i++)
@@ -70,6 +89,32 @@ namespace AS_Warehouse
                 Dock tmp = new Dock();
                 tmp.id = i.ToString();
                 Docks.Add(tmp);
+            }
+        }
+
+        private static void InitCsvOutput()
+        {
+            if (!Directory.Exists(csvOutputDirectory)) 
+            {
+                Directory.CreateDirectory(csvOutputDirectory);
+            }
+
+            // Warehouse.csv exists
+            if (File.Exists(csvOutputDirectory + csvFileName + ".csv"))
+            {
+                int idSuffix = 1;
+                while (File.Exists(csvOutputDirectory + csvFileName + idSuffix.ToString() + ".csv"))
+                {
+                    idSuffix++;
+                }
+                csvFileName += idSuffix.ToString();
+            }
+            CsvOutputFile = csvOutputDirectory + csvFileName + ".csv";
+            //File.Create(CsvOutputFile).Close();
+
+            using (StreamWriter sw = new StreamWriter(CsvOutputFile, true))
+            {
+                sw.WriteLine("Crate ID,Crate Value,Driver Name,Company,Current Time,Scenario");
             }
         }
 
@@ -88,6 +133,7 @@ namespace AS_Warehouse
             Console.Clear();
             RollNewTrucks();
 
+            // Dequeue Entrance into Dock.Line
             Console.WriteLine($"Trucks in Entrance: {Entrance.Count}");
             if (Entrance.Count > 0)
             {
@@ -101,16 +147,22 @@ namespace AS_Warehouse
                 Dock dock = Docks[i];
                 dock.RunTick();
 
+                // Keep track of longest Line throughout simulation
                 if (dock.Line.Count > TruckQueueMax)
                 {
                     TruckQueueMax = dock.Line.Count;
                 }
-                
-                
             }
-            // Dequeue Entrance into Dock.Line
-            // Keep track of longest Line
-            // Trucks should pop a crate
+        }
+
+        public static void EndSim()
+        {
+            foreach (Dock dock in Docks)
+            {
+                Dock.DockStats stats = dock.GetDockInfo();
+                TruckValueTotal += stats.SalesTotal;
+            }
+            Console.Clear();
         }
 
         /// <summary>
@@ -132,6 +184,10 @@ namespace AS_Warehouse
             else return 0;
         }
 
+        /// <summary>
+        /// Returns the Dock that has the shortest line. Does NOT consider how many crates are in the current Truck.
+        /// </summary>
+        /// <returns>Dock object with least amount of traffic.</returns>
         static Dock GetShortestLine()
         {
             Dock shortestLine = Docks[0];

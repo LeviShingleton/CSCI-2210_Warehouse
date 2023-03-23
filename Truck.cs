@@ -26,7 +26,7 @@ namespace AS_Warehouse
             Driver = d_first[Warehouse.random.Next(d_first.Length)] + " " + d_last[Warehouse.random.Next(d_last.Length)];
             DeliveryCompany = c_names[Warehouse.random.Next(c_names.Length)];
 
-            for (int i = 0; i < Warehouse.random.Next(5, 16); i++)
+            for (int i = 0; i < Warehouse.random.Next(4,13); i++)
             {
                 Trailer.Push(new Crate());
             }
