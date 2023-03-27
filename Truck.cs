@@ -51,6 +51,19 @@ namespace AS_Warehouse
         {
             return Trailer.Pop();
         }
+        /// <summary>
+        /// Dumps the contents of the Trailer and returns the value of the contents.
+        /// </summary>
+        /// <returns>Value of contents dumped.</returns>
+        public double GetValueDump()
+        {
+            double dumpValue = 0.0;
+            for (int i = 0; i < Trailer.Count; i++)
+            {
+                dumpValue += Trailer.Pop().Price;
+            }
+            return dumpValue;
+        }
 
     }
 

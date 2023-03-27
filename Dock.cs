@@ -15,12 +15,17 @@ namespace AS_Warehouse
         private Truck? currentTruck = null;
         public bool Occupied => currentTruck != null;
 
-        private double TotalSales;
+        private double _totalSales = 0.0;
+        private double TotalSales
+        {
+            get { return _totalSales; }
+            set => _totalSales = Math.Round(value, 2);
+        }
 
-        private int NumCratesTotal;
-        private int NumTrucksTotal;
-        private int TimeInUse;
-        private int TimeNotInUse;
+        private int cratesUnloaded;
+        private int trucksDocked;
+        private int timeInUse, timeNotInUse;
+        private double avgUseTime => timeInUse / (timeInUse + timeNotInUse);
 
         /// <summary>
         /// Collection of simulation statistics for the Dock's Run operations. Updated every call of RunTick().
@@ -57,16 +62,17 @@ namespace AS_Warehouse
         /// </summary>
         public struct DockStats
         {
-            public int NumTrucksTotal;
-            public int NumCratesTotal;
+            public int TrucksDocked;
+            public int CratesUnloaded;
             public int TimeInUse;
             public int TimeNotInUse;
+            public double AvgUseTime => TimeInUse / (TimeInUse + TimeNotInUse);
             public double SalesTotal;
 
             public DockStats()
             {
-                NumTrucksTotal = 0;
-                NumCratesTotal = 0;
+                TrucksDocked = 0;
+                CratesUnloaded = 0;
                 TimeInUse = 0;
                 TimeNotInUse = 0;
                 SalesTotal = 0.0;
@@ -101,22 +107,21 @@ namespace AS_Warehouse
             {
                 DockRunInfo.Clear();
 
-                currentTruck = Line.Peek();
+                if (Line.Peek() != null)
+                {
+                    currentTruck = Line.Peek();
+                    trucksDocked++;
 
-                DockRunInfo.DriverName = currentTruck.Driver;
-                DockRunInfo.CompanyName = currentTruck.DeliveryCompany;
-                DockRunInfo.Scenario = "N/A";
+                    DockRunInfo.DriverName = currentTruck.Driver;
+                    DockRunInfo.CompanyName = currentTruck.DeliveryCompany;
+                    DockRunInfo.Scenario = "N/A";
+                }
             }
-
-            // If a truck is in line,
-            // Increment time in use
-            // Unload from it
-
 
             // If a truck is docked
             if (currentTruck != null)
             {
-                TimeInUse++;
+                timeInUse++;
 
                 // If the docked truck has crates before unloading
                 if (currentTruck.TrailerCount > 0)
@@ -129,7 +134,6 @@ namespace AS_Warehouse
                     {
                         Line.Dequeue();
                         currentTruck = null;
-                        NumTrucksTotal++;
                         DockRunInfo.Scenario += "and the truck has no more crates to unload, ";
 
                         // See if another truck is in Line at the Dock
@@ -151,26 +155,15 @@ namespace AS_Warehouse
                         WriteTickStats();
                     }
                 }
-
-                //// If it finished unloading, go ahead and get the next truck in line
-                //else if (currentTruck.TrailerCount <= 0)
-                //{
-                //    if (Line.Count > 0)
-                //    {
-                //        Line.Dequeue();
-                //        Stats.Scenario += "and another truck is already in the Dock.";
-                //    }
-                //    else
-                //    {
-                //        Stats.Scenario += "but another truck is NOT already in the Dock.";
-                //    }
-                //}
-
             }
             else
             {
-                TimeNotInUse++;
-                Console.WriteLine($"Dock {id} not in use.");
+                timeNotInUse++;
+                if (!Warehouse.fastForward)
+                {
+                    Console.WriteLine($"Dock {id} not in use.");
+                }
+                
                 if (!DockRunInfo.CrateID.Equals(""))
                 { DockRunInfo.Clear(); }
             }
@@ -183,21 +176,49 @@ namespace AS_Warehouse
             DockRunInfo.CrateValue = crate.Price;
 
             TotalSales += crate.Price;
-            NumCratesTotal++;
+            cratesUnloaded++;
         }
 
+        /// <summary>
+        /// Dumps the Dock's line past currentTruck and returns the value of its contents.
+        /// </summary>
+        /// <returns></returns>
+        public double DoLineDump()
+        {
+            if (Line.Count - 1 > 0)
+            {
+                double lineValueRemainer = 0.0;
+
+                if (currentTruck != null)
+                {
+                    Line.Dequeue();
+                }
+                for (int i = 0; i < Line.Count; i++)
+                {
+                    lineValueRemainer += Line.Dequeue().GetValueDump();
+                }
+
+                return Math.Round(lineValueRemainer, 2);
+            }
+            else return 0;
+        }
+
+        #region Analytics Functions
         /// <summary>
         /// Writes a formatted block of text describing current Dock statistics to console.
         /// Automatically calls WriteToCsv();
         /// </summary>
         private void WriteTickStats()
         {
-            Console.WriteLine($"\nDock ID: {id}\n" 
+            if (!Warehouse.fastForward)
+            {
+                Console.WriteLine($"\nDock ID: {id}\n"
                 + $"Crate ID: {DockRunInfo.CrateID} \t Crate Value: ${DockRunInfo.CrateValue}\n" +
                 $"Driver: {DockRunInfo.DriverName} \t Company: {DockRunInfo.CompanyName}\n" +
                 $"Current Time: {DockRunInfo.TimeInc}\n" +
                 $"Scenario: {DockRunInfo.Scenario}\n");
-
+            }
+            
             WriteToCsv();
         }
 
@@ -206,7 +227,7 @@ namespace AS_Warehouse
         /// </summary>
         public void WriteToCsv()
         {
-            using (StreamWriter sw = new StreamWriter(Warehouse.CsvOutputFile, true))
+            using (StreamWriter sw = new StreamWriter(Warehouse.OUTPUT_FILE_PATH + ".csv", true))
             {
                 sw.WriteLine($"{DockRunInfo.CrateID},${DockRunInfo.CrateValue}," +
                     $"{DockRunInfo.DriverName},\"{DockRunInfo.CompanyName}\"," +
@@ -217,12 +238,14 @@ namespace AS_Warehouse
         public DockStats GetDockInfo()
         {
             DockStats DockInfo = new DockStats();
-            DockInfo.NumTrucksTotal = NumTrucksTotal;
-            DockInfo.NumCratesTotal = NumCratesTotal;
-            DockInfo.TimeInUse = TimeInUse;
-            DockInfo.TimeNotInUse = TimeNotInUse;
+            DockInfo.TrucksDocked = trucksDocked;
+            DockInfo.CratesUnloaded = cratesUnloaded;
+            DockInfo.TimeInUse = timeInUse;
+            DockInfo.TimeNotInUse = timeNotInUse;
+            DockInfo.SalesTotal = TotalSales;
 
             return DockInfo;
         }
+        #endregion 
     }
 }

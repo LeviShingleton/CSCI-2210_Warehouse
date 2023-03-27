@@ -12,8 +12,4 @@
     <Compile Remove="IStack.cs" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="CSV Output\" />
-  </ItemGroup>
-
 </Project>
